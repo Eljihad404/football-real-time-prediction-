@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  spark-trainer:
+    build: .
+    image: my-football-spark:latest
+    container_name: football_model_trainer
+    user: root
+    volumes:
+      # Map the current directory to the container's working directory
+      - ./:/opt/spark/work-dir
+    # Keep the container running so we can execute scripts manually
+    command: tail -f /dev/null

@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL (Storage) - Using postgres:15
+  postgres:
+    image: postgres:15
+    container_name: football_db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: football_data
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - football-net
+
+  # 2. Zookeeper - Using zookeeper:3.9 (Standard Library)
+  zookeeper:
+    image: zookeeper:3.9
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOO_MY_ID: 1
+    networks:
+      - football-net
+
+  # 3. Kafka - Using confluentinc/cp-kafka:7.6.1
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Listeners: Internal for Docker (29092), External for Host (9092)
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - football-net
+
+  # 4. MinIO - Using minio/minio:latest
+  minio:
+    image: minio/minio:latest
+    container_name: football_minio
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    # Command to start server and console
+    command: server /data --console-address ":9001"
+    networks:
+      - football-net
+
+  # 5. Spark Master - Using apache/spark:3.5.7-python3
+  spark-master:
+    image: apache/spark:3.5.7-python3
+    container_name: spark-master
+    hostname: spark-master
+    environment:
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+    ports:
+      - "8080:8080" # Web UI
+      - "7077:7077" # Cluster Port
+    # Native command for Apache Spark image
+    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.master.Master"
+    networks:
+      - football-net
+
+  # 6. Spark Worker - Using apache/spark:3.5.7-python3
+  spark-worker:
+    image: apache/spark:3.5.7-python3
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_WEBUI_PORT=8081
+    # Native command for Apache Spark image
+    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
+    networks:
+      - football-net
+
+  # 7. Python ETL Script
+  etl-app:
+    build: .
+    container_name: football_etl
+    depends_on:
+      - kafka
+      - postgres
+      - minio
+    volumes:
+      - ./etl_script.py:/app/etl_script.py
+    networks:
+      - football-net
+
+networks:
+  football-net:
+    driver: bridge

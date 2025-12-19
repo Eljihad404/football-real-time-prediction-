@@ -1,0 +1,19 @@
+# Python & OS
+__pycache__/
+*.pyc
+.DS_Store
+
+# Data & Models (IMPORTANT)
+data/
+*.csv
+*.parquet
+*.model
+*.pkl
+
+# Node Modules (Frontend)
+node_modules/
+build/
+
+# IDEs
+.vscode/
+.idea/
